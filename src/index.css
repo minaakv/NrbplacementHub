@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom focus indicator helper to guarantee unmistakable visual changes on keyboard navigation */
+.accessible-focus:focus-visible {
+  outline: 4px solid #f59e0b !important; /* Vivid Amber */
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 8px rgba(0, 0, 0, 0.9) !important;
+}
+
+.accessible-focus-dark:focus-visible {
+  outline: 4px solid #3b82f6 !important; /* Vivid Blue */
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Base style adjustments for 200% zoom capability */
+body {
+  min-height: 100vh;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbars with high contrast */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #111827;
+}
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border: 3px solid #111827;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* High contrast custom styles for toggle buttons or tabs */
+button, [role="button"], [role="tab"] {
+  cursor: pointer;
+}
+
+/* High Contrast Yellow On Black Theme Utilities */
+.theme-yellow-black {
+  background-color: #000000 !important;
+  color: #ffff00 !important;
+}
+.theme-yellow-black input,
+.theme-yellow-black select,
+.theme-yellow-black textarea {
+  background-color: #000000 !important;
+  color: #ffff00 !important;
+  border: 2px solid #ffff00 !important;
+}
+.theme-yellow-black button {
+  background-color: #000000 !important;
+  color: #ffff00 !important;
+  border: 2px solid #ffff00 !important;
+}
+.theme-yellow-black button:hover {
+  background-color: #ffff00 !important;
+  color: #000000 !important;
+}
+.theme-yellow-black .card {
+  background-color: #000000 !important;
+  border: 2px solid #ffff00 !important;
+}

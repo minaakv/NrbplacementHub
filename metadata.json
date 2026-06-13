@@ -1,0 +1,6 @@
+{
+  "name": "Nairobi Inclusive Spaces Placement Hub",
+  "description": "An accessible remote placement, volunteering, and internship dashboard for USIU-Africa students with visual and physical impairments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
