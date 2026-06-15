@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
+import { auth, db } from "./firebase";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { collection, addDoc, getDocs, query, where, setDoc, doc } from "firebase/firestore";
 import { 
   LayoutGrid, 
   ShieldAlert, 
@@ -107,6 +110,57 @@ function playSound(type: 'beep' | 'success' | 'click' | 'error', soundEnabled: b
 }
 
 export default function App() {
+  // Firebase Auth State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (user) {
+        fetchUserApplications(user.uid);
+      } else {
+        // Reset to initial dummy data if logged out
+        setSubmissions([{
+          id: "usiu-cs-01",
+          roleId: "role-amaica-relations",
+          roleTitle: "Inclusive Hospitality Guest Relations & Accessibility Lead",
+          fullName: "Almasi Mwangi",
+          email: "almasi.mwangi@usiu.ac.ke",
+          submissionType: "audio",
+          textContent: "Simulated audio voice recording successfully transcribed: Speech pacing balanced. Confirmed 90-hour graduation community service interest with visual aid requests.",
+          assistiveTech: ["Tactile Switch Navigation", "Screen Magnifier"],
+          hoursCommitment: "5 hours per week",
+          createdAt: "2026-06-02",
+          status: "Accepted"
+        }]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const fetchUserApplications = async (uid: string) => {
+    try {
+      const q = query(collection(db, "applications"), where("userId", "==", uid));
+      const querySnapshot = await getDocs(q);
+      const userSubs: ApplicationSubmission[] = [];
+      querySnapshot.forEach((document) => {
+        userSubs.push({ id: document.id, ...document.data() } as ApplicationSubmission);
+      });
+      // Sort by newest first
+      userSubs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setSubmissions(userSubs.length > 0 ? userSubs : []);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+    }
+  };
+
   // Accessibility state presets
   // Default is "theme-cool-light" -> UNV Blue & Cream elegant contrasting default, gorgeous for sighted and low-vision alike
   const [settings, setSettings] = useState<A11ySettings>({
@@ -340,7 +394,7 @@ export default function App() {
     }, 3800);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedApplyRole) return;
 
@@ -384,13 +438,67 @@ export default function App() {
       assistiveTech: formTech.length > 0 ? formTech : ["No special technology specified"],
       hoursCommitment: formCommitment,
       createdAt: new Date().toISOString().split('T')[0],
-      status: "In Review"
+      status: "In Review",
+      userId: currentUser?.uid || ""
     };
 
-    setSubmissions(prev => [newSub, ...prev]);
-    triggerSound('success');
-    triggerVocalization(`Congratulations ${formName}! Portfolio received for ${selectedApplyRole.title}. Host organization notified.`);
-    setSelectedApplyRole(null);
+    try {
+      if (currentUser) {
+        await setDoc(doc(collection(db, "applications"), newSub.id), newSub);
+      }
+      setSubmissions(prev => [newSub, ...prev]);
+      triggerSound('success');
+      triggerVocalization(`Congratulations ${formName}! Portfolio received for ${selectedApplyRole.title}. Host organization notified.`);
+      setSelectedApplyRole(null);
+    } catch (error) {
+      console.error("Error saving application: ", error);
+      triggerSound('error');
+      triggerVocalization("Error saving application. Please try again.");
+    }
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      if (isSignUp) {
+        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        const user = userCredential.user;
+        await setDoc(doc(db, "users", user.uid), {
+          uid: user.uid,
+          email: user.email,
+          fullName: authName,
+          createdAt: new Date().toISOString()
+        });
+        triggerSound('success');
+        triggerVocalization("Account created successfully. You are now logged in.");
+      } else {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        triggerSound('success');
+        triggerVocalization("Logged in successfully.");
+      }
+      setAuthModalOpen(false);
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthName("");
+    } catch (error: any) {
+      setAuthError(error.message);
+      triggerSound('error');
+      triggerVocalization("Authentication failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      triggerSound('click');
+      triggerVocalization("Logged out successfully.");
+    } catch (error) {
+      console.error("Error signing out: ", error);
+    }
   };
 
   const handleAddCustomPassport = (e: React.FormEvent) => {
@@ -552,6 +660,30 @@ export default function App() {
 
             {/* Quick Action: Open Accessibility Controls Guide */}
             <div className="flex flex-wrap gap-2">
+              {currentUser ? (
+                <button 
+                  onClick={handleLogout}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#002F6C] rounded-lg font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all outline-none"
+                  aria-label="Logout"
+                >
+                  <Users className="w-4 h-4 text-[#F2A900]" />
+                  <span>Logout</span>
+                </button>
+              ) : (
+                <button 
+                  onClick={() => {
+                    setAuthModalOpen(true);
+                    triggerSound('click');
+                    triggerVocalization("Authentication modal opened.");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#002F6C] rounded-lg font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all outline-none"
+                  aria-label="Login or Sign up"
+                >
+                  <Users className="w-4 h-4 text-[#F2A900]" />
+                  <span>Account Login</span>
+                </button>
+              )}
+
               <button 
                 onClick={() => {
                   const trigger = document.getElementById("a11y-panel-trigger");
@@ -1888,6 +2020,116 @@ export default function App() {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== AUTHENTICATION MODAL ==================== */}
+      {authModalOpen && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-title"
+        >
+          <div className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-blue-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 id="auth-modal-title" className="text-xl font-black text-[#002F6C] uppercase tracking-tight">
+                  {isSignUp ? "Create Account" : "Student Login"}
+                </h2>
+                <p className="text-xs text-slate-500 font-semibold mt-1">
+                  {isSignUp ? "Join the Nairobi Placement Registry" : "Access your registered opportunities"}
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  setAuthModalOpen(false);
+                  triggerSound('click');
+                  triggerVocalization("Authentication modal closed.");
+                }}
+                className="p-2 bg-slate-100 hover:bg-red-50 text-[#002F6C] hover:text-red-600 rounded-lg transition-colors focus:ring-2 focus:ring-[#002F6C]"
+                aria-label="Close authentication form"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {authError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-bold" role="alert">
+                {authError}
+              </div>
+            )}
+
+            <form onSubmit={handleAuth} className="space-y-4">
+              {isSignUp && (
+                <div>
+                  <label htmlFor="authName" className="block text-xs font-black text-[#002F6C] uppercase tracking-wider mb-1.5">
+                    Full Name <span className="text-red-500" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    id="authName"
+                    type="text"
+                    value={authName}
+                    onChange={(e) => setAuthName(e.target.value)}
+                    required={isSignUp}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              )}
+              
+              <div>
+                <label htmlFor="authEmail" className="block text-xs font-black text-[#002F6C] uppercase tracking-wider mb-1.5">
+                  Email Address <span className="text-red-500" aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="authEmail"
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="authPassword" className="block text-xs font-black text-[#002F6C] uppercase tracking-wider mb-1.5">
+                  Password <span className="text-red-500" aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="authPassword"
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-[#002F6C] hover:bg-[#005A9C] text-white font-extrabold py-3 px-4 rounded-lg shadow-sm transition-all text-sm uppercase tracking-wider disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {authLoading ? "Processing..." : (isSignUp ? "Sign Up" : "Sign In")}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-4 text-center">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setAuthError("");
+                  triggerSound('click');
+                }}
+                className="text-xs font-bold text-[#005A9C] hover:underline"
+              >
+                {isSignUp ? "Already have an account? Sign In" : "Need an account? Sign Up"}
+              </button>
+            </div>
           </div>
         </div>
       )}

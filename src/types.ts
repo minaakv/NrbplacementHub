@@ -44,6 +44,14 @@ export interface ApplicationSubmission {
   hoursCommitment: string;
   createdAt: string;
   status: 'Received' | 'In Review' | 'Accepted';
+  userId?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  fullName: string;
+  createdAt: string;
 }
 
 export interface A11ySettings {
