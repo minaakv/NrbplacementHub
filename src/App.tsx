@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, addDoc, getDocs, query, where, setDoc, doc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, setDoc, doc, getDoc } from "firebase/firestore";
 import { 
   LayoutGrid, 
   ShieldAlert, 
@@ -37,7 +37,7 @@ import {
   Filter
 } from "lucide-react";
 import { proposalSections, defaultRoles, defaultSkillsPassports } from "./data/programFramework";
-import { VolunteerRole, ApplicationSubmission, A11ySettings, SkillsPassport } from "./types";
+import { VolunteerRole, ApplicationSubmission, A11ySettings, SkillsPassport, UserProfile } from "./types";
 
 // Mapping of Nairobi inclusive placements to corresponding verified photo galleries to represent each site
 const roleImages: Record<string, string> = {
@@ -112,6 +112,9 @@ function playSound(type: 'beep' | 'success' | 'click' | 'error', soundEnabled: b
 export default function App() {
   // Firebase Auth State
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [profileEditMode, setProfileEditMode] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -121,11 +124,20 @@ export default function App() {
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
         fetchUserApplications(user.uid);
+        try {
+          const profileDoc = await getDoc(doc(db, "users", user.uid));
+          if (profileDoc.exists()) {
+            setUserProfile(profileDoc.data() as UserProfile);
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+        }
       } else {
+        setUserProfile(null);
         // Reset to initial dummy data if logged out
         setSubmissions([{
           id: "usiu-cs-01",
@@ -343,8 +355,8 @@ export default function App() {
   const openApplyModal = (role: VolunteerRole, btnElement: HTMLButtonElement) => {
     triggerButtonRef.current = btnElement;
     setSelectedApplyRole(role);
-    setFormName("");
-    setFormEmail("");
+    setFormName(userProfile ? userProfile.fullName : "");
+    setFormEmail(userProfile ? userProfile.email : "");
     setFormText("");
     setFormVideoLink("");
     setFormTech([]);
@@ -496,8 +508,23 @@ export default function App() {
       await signOut(auth);
       triggerSound('click');
       triggerVocalization("Logged out successfully.");
+      handleTabChange('dashboard');
     } catch (error) {
       console.error("Error signing out: ", error);
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !userProfile) return;
+    try {
+      await setDoc(doc(db, "users", currentUser.uid), userProfile);
+      triggerSound('success');
+      triggerVocalization("Profile updated successfully.");
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      triggerSound('error');
+      triggerVocalization("Error updating profile.");
     }
   };
 
@@ -659,16 +686,130 @@ export default function App() {
             </div>
 
             {/* Quick Action: Open Accessibility Controls Guide */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              {/* Profile Icon / Login Button */}
               {currentUser ? (
-                <button 
-                  onClick={handleLogout}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#002F6C] rounded-lg font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all outline-none"
-                  aria-label="Logout"
-                >
-                  <Users className="w-4 h-4 text-[#F2A900]" />
-                  <span>Logout</span>
-                </button>
+                <div className="relative">
+                  <button
+                    id="profile-trigger"
+                    onClick={() => {
+                      setProfileDropdownOpen(prev => !prev);
+                      if (!profileDropdownOpen) setProfileEditMode(false);
+                      triggerSound('click');
+                    }}
+                    className="w-9 h-9 rounded-full bg-[#002F6C] hover:bg-[#005A9C] text-white flex items-center justify-center transition-all shadow-md border-2 border-[#F2A900]"
+                    aria-label="Open profile menu"
+                    aria-expanded={profileDropdownOpen}
+                  >
+                    <UserCheck className="w-4 h-4" />
+                  </button>
+
+                  {profileDropdownOpen && (
+                    <>
+                      {/* Overlay to close dropdown on outside click */}
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setProfileDropdownOpen(false)}
+                        aria-hidden="true"
+                      />
+                      <div
+                        className="absolute right-0 top-11 z-50 w-72 bg-white rounded-2xl shadow-2xl border border-blue-100 overflow-hidden"
+                        role="dialog"
+                        aria-label="Profile Menu"
+                      >
+                        {/* Header */}
+                        <div className="bg-[#002F6C] px-4 py-3 flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-[#F2A900] flex items-center justify-center shrink-0">
+                            <UserCheck className="w-4 h-4 text-[#002F6C]" />
+                          </div>
+                          <div className="overflow-hidden">
+                            <p className="text-white font-black text-xs truncate">{userProfile?.fullName || "Student"}</p>
+                            <p className="text-blue-200 text-[10px] truncate">{userProfile?.email || currentUser.email}</p>
+                          </div>
+                        </div>
+
+                        {/* Profile Details */}
+                        <div className="p-4 space-y-3">
+                          {!profileEditMode ? (
+                            <>
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Full Name</p>
+                                  <p className="text-sm font-bold text-[#002F6C]">{userProfile?.fullName || "—"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Email Address</p>
+                                  <p className="text-sm font-bold text-[#002F6C]">{userProfile?.email || currentUser.email}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setProfileEditMode(true)}
+                                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-[#002F6C] rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                              >
+                                Edit Profile
+                              </button>
+                            </>
+                          ) : (
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                await handleUpdateProfile(e);
+                                setProfileEditMode(false);
+                              }}
+                              className="space-y-3"
+                            >
+                              <div>
+                                <label htmlFor="dd-profileName" className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Full Name</label>
+                                <input
+                                  id="dd-profileName"
+                                  type="text"
+                                  value={userProfile?.fullName || ""}
+                                  onChange={(e) => userProfile && setUserProfile({ ...userProfile, fullName: e.target.value })}
+                                  required
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="dd-profileEmail" className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Email (read-only)</label>
+                                <input
+                                  id="dd-profileEmail"
+                                  type="email"
+                                  value={userProfile?.email || ""}
+                                  readOnly
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-400 bg-slate-100 cursor-not-allowed"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="submit"
+                                  className="flex-1 py-2 bg-[#002F6C] hover:bg-[#005A9C] text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setProfileEditMode(false)}
+                                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-[#002F6C] rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </form>
+                          )}
+
+                          <hr className="border-slate-100" />
+                          <button
+                            onClick={() => { handleLogout(); setProfileDropdownOpen(false); }}
+                            className="w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Logout
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : (
                 <button 
                   onClick={() => {
@@ -798,6 +939,7 @@ export default function App() {
                 <span>Registered Application Logs ({submissions.length})</span>
               </button>
             </li>
+
           </ul>
         </nav>
 
@@ -1761,6 +1903,7 @@ export default function App() {
           </section>
         )}
 
+
       </main>
 
       {/* ==================== THE APPLICATION FORM POPUP MODAL ==================== */}
@@ -1812,6 +1955,15 @@ export default function App() {
             {/* Input form */}
             <form onSubmit={handleFormSubmit} className="space-y-4">
               
+              {userProfile && (
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-2 text-xs text-[#002F6C]">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5 text-[#005A9C]" />
+                  <p>
+                    <strong>Using Profile Defaults:</strong> We've pre-filled your application with your saved profile name and email. You can edit them below if you'd like to use different details for this specific application.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 <div className="space-y-1">
                   <label htmlFor="fullName" className="text-[10px] font-black uppercase tracking-wider block text-slate-500">
