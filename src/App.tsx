@@ -140,20 +140,6 @@ export default function App() {
         }
       } else {
         setUserProfile(null);
-        // Reset to initial dummy data if logged out
-        setSubmissions([{
-          id: "usiu-cs-01",
-          roleId: "role-amaica-relations",
-          roleTitle: "Inclusive Hospitality Guest Relations & Accessibility Lead",
-          fullName: "Almasi Mwangi",
-          email: "almasi.mwangi@usiu.ac.ke",
-          submissionType: "audio",
-          textContent: "Simulated audio voice recording successfully transcribed: Speech pacing balanced. Confirmed 90-hour graduation community service interest with visual aid requests.",
-          assistiveTech: ["Tactile Switch Navigation", "Screen Magnifier"],
-          hoursCommitment: "5 hours per week",
-          createdAt: "2026-06-02",
-          status: "Accepted"
-        }]);
       }
     });
     return () => unsubscribe();
