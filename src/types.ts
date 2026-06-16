@@ -43,7 +43,7 @@ export interface ApplicationSubmission {
   assistiveTech: string[];
   hoursCommitment: string;
   createdAt: string;
-  status: 'Received' | 'In Review' | 'Accepted';
+  status: 'Received' | 'In Review' | 'Accepted' | 'Withdrawn' | 'Rejected';
   userId?: string;
 }
 
@@ -52,6 +52,12 @@ export interface UserProfile {
   email: string;
   fullName: string;
   createdAt: string;
+  // Extended student profile fields
+  phone?: string;
+  major?: string;
+  studentId?: string;
+  bio?: string;
+  disability?: string;
 }
 
 export interface A11ySettings {

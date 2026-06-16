@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, addDoc, getDocs, query, where, setDoc, doc, getDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, setDoc, doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { 
   LayoutGrid, 
   ShieldAlert, 
@@ -34,7 +34,8 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
-  Filter
+  Filter,
+  Building2
 } from "lucide-react";
 import { proposalSections, defaultRoles, defaultSkillsPassports } from "./data/programFramework";
 import { VolunteerRole, ApplicationSubmission, A11ySettings, SkillsPassport, UserProfile } from "./types";
@@ -57,6 +58,7 @@ const roleImages: Record<string, string> = {
 import AccessibilityPanel from "./components/AccessibilityPanel";
 import CommuteAdvisor from "./components/CommuteAdvisor";
 import InclusiveGuidanceModal from "./components/InclusiveGuidanceModal";
+import ProfilePage from "./pages/ProfilePage";
 
 // Native Web Audio Synthesizer for accessible acoustic feedback
 function playSound(type: 'beep' | 'success' | 'click' | 'error', soundEnabled: boolean) {
@@ -302,6 +304,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [settings]);
 
+  const handleWithdrawApplication = async (submissionId: string, roleTitle: string) => {
+    try {
+      // Mark as Withdrawn in Firestore if user is logged in
+      if (currentUser) {
+        const appRef = doc(db, "applications", submissionId);
+        await updateDoc(appRef, { status: "Withdrawn" });
+      }
+      // Update local state
+      setSubmissions(prev =>
+        prev.map(s => s.id === submissionId ? { ...s, status: "Withdrawn" as const } : s)
+      );
+    } catch (error) {
+      console.error("Error withdrawing application:", error);
+      throw error;
+    }
+  };
+
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
     triggerSound('click');
@@ -310,6 +329,7 @@ export default function App() {
     if (tabId === 'onboarding') tabName = "Diagnostic Screen Reader & Sound Sandbox";
     if (tabId === 'passport') tabName = "USIU Skills Passport hour certifier";
     if (tabId === 'applications') tabName = "My Submitted Portfolios Log";
+    if (tabId === 'profile') tabName = "My Student Profile & Applications";
     
     triggerVocalization(`switched context to: ${tabName}. All commands mapped to Alt hotkeys.`);
   };
@@ -477,12 +497,15 @@ export default function App() {
       if (isSignUp) {
         const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         const user = userCredential.user;
-        await setDoc(doc(db, "users", user.uid), {
+        const newProfile: UserProfile = {
           uid: user.uid,
-          email: user.email,
+          email: user.email!,
           fullName: authName,
           createdAt: new Date().toISOString()
-        });
+        };
+        await setDoc(doc(db, "users", user.uid), newProfile);
+        // Set profile immediately — onAuthStateChanged may fire before setDoc resolves
+        setUserProfile(newProfile);
         triggerSound('success');
         triggerVocalization("Account created successfully. You are now logged in.");
       } else {
@@ -526,6 +549,13 @@ export default function App() {
       triggerSound('error');
       triggerVocalization("Error updating profile.");
     }
+  };
+
+  // Accepts a UserProfile directly — used by ProfilePage (not a form event handler)
+  const saveProfile = async (profile: UserProfile) => {
+    if (!currentUser) return;
+    await setDoc(doc(db, "users", currentUser.uid), profile);
+    setUserProfile(profile);
   };
 
   const handleAddCustomPassport = (e: React.FormEvent) => {
@@ -845,6 +875,14 @@ export default function App() {
                 <ShieldAlert className="w-4 h-4" />
                 <span>{isOnboardingVerified ? "✓ Calibration Verified" : "Calibrate Screen Settings"}</span>
               </button>
+              <a
+                href="/company"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#002F6C] rounded-lg font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all outline-none"
+                aria-label="Go to company portal"
+              >
+                <Building2 className="w-4 h-4 text-[#F2A900]" />
+                <span>Company Portal</span>
+              </a>
             </div>
 
           </div>
@@ -936,9 +974,27 @@ export default function App() {
                 aria-current={activeTab === 'applications' ? 'page' : undefined}
               >
                 <CheckSquare className="w-5 h-5 text-[#005A9C]" />
-                <span>Registered Application Logs ({submissions.length})</span>
+                <span>Application Logs ({submissions.length})</span>
               </button>
             </li>
+
+            {/* Profile tab – only visible when logged in */}
+            {currentUser && (
+              <li>
+                <button
+                  onClick={() => handleTabChange('profile')}
+                  className={`px-5 py-3.5 font-bold transition-all flex items-center gap-2 border-b-4 ${
+                    activeTab === 'profile'
+                      ? 'border-[#F2A900] text-[#002F6C] bg-white font-extrabold shadow-sm'
+                      : 'border-transparent text-slate-500 hover:text-[#005A9C]'
+                  } ${textStyles.body}`}
+                  aria-current={activeTab === 'profile' ? 'page' : undefined}
+                >
+                  <UserCheck className="w-5 h-5 text-[#005A9C]" />
+                  <span>My Profile</span>
+                </button>
+              </li>
+            )}
 
           </ul>
         </nav>
@@ -1903,6 +1959,19 @@ export default function App() {
           </section>
         )}
 
+        {/* ==================== TAB: STUDENT PROFILE ==================== */}
+        {activeTab === 'profile' && currentUser && (
+          <ProfilePage
+            userProfile={userProfile}
+            setUserProfile={setUserProfile}
+            submissions={submissions}
+            onWithdraw={handleWithdrawApplication}
+            onSaveProfile={saveProfile}
+            triggerSound={triggerSound}
+            triggerVocalization={triggerVocalization}
+            settings={settings}
+          />
+        )}
 
       </main>
 
